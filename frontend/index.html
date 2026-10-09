@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>My Household Manager</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@500;600&family=Public+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <header class="top-bar">
+    <span class="mark">⌂</span>
+    <h1>My Household Manager</h1>
+    <div id="userBar" class="user-bar" hidden>
+      <span id="userName"></span>
+      <button type="button" id="logoutBtn">Sign out</button>
+    </div>
+  </header>
+
+  <main class="layout">
+
+        <section id="authView" class="card auth-card" hidden>
+      <h2>Welcome</h2>
+      <div class="auth-tabs">
+        <button type="button" id="tabLogin" class="tab active">Sign in</button>
+        <button type="button" id="tabSignup" class="tab">Create account</button>
+      </div>
+
+      <form id="loginForm" class="auth-form">
+        <input id="loginEmail" type="email" placeholder="Email" autocomplete="email" required />
+        <div class="pw-wrap">
+          <input id="loginPassword" type="password" placeholder="Password" autocomplete="current-password" required />
+          <button type="button" class="pw-eye" data-show="loginPassword" aria-label="Show password"><svg class="icon-eye" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg><svg class="icon-eye-off" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg></button>
+        </div>
+        <button type="submit">Sign in</button>
+      </form>
+
+      <form id="signupForm" class="auth-form" hidden>
+        <input id="signupName" type="text" placeholder="Your name" autocomplete="name" required />
+        <input id="signupEmail" type="email" placeholder="Email" autocomplete="email" required />
+        <div class="pw-wrap">
+          <input id="signupPassword" type="password" placeholder="Password (at least 8 characters)" autocomplete="new-password" minlength="8" required />
+          <button type="button" class="pw-eye" data-show="signupPassword" aria-label="Show password"><svg class="icon-eye" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg><svg class="icon-eye-off" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg></button>
+        </div>
+        <input id="signupHousehold" type="text" placeholder="Household name (e.g. The Okafors)" />
+        <p class="auth-hint">Joining family or housemates? Enter their invite code instead of a household name.</p>
+        <input id="signupInvite" type="text" placeholder="Invite code (optional)" autocapitalize="characters" />
+        <button type="submit">Create account</button>
+      </form>
+
+      <p id="authError" class="auth-error"></p>
+    </section>
+
+    <div id="appView" hidden>
+
+      <section class="card household-card">
+        <div><strong id="householdName"></strong> <span id="memberNames"></span></div>
+        <div class="household-meta">
+          Invite code: <code id="inviteCode"></code>
+          · Timezone: <span id="tzLabel"></span>
+          <button type="button" id="tzBtn">Change</button>
+        </div>
+      </section>
+
+      <section class="card chat-card">
+        <h2>Ask the manager</h2>
+        <div id="chatMessages"></div>
+        <form id="chatForm">
+          <input id="chatInput" type="text" placeholder="Tell me what's going on..." maxlength="1000" />
+          <button type="submit">Send</button>
+        </form>
+      </section>
+
+      <div class="lists-grid">
+        <section class="card">
+          <h2>Shopping list</h2>
+          <ul id="shoppingList"></ul>
+        </section>
+
+        <section class="card">
+          <h2>Tasks</h2>
+          <form id="taskForm" class="quick-add">
+            <input id="taskTitle" type="text" placeholder="New task" />
+            <input id="taskDue" type="datetime-local" title="Due date and time (optional)" />
+            <button type="submit">Add</button>
+          </form>
+          <ul id="taskList"></ul>
+        </section>
+
+        <section class="card wide">
+          <h2>Reminders</h2>
+          <ul id="reminderList"></ul>
+        </section>
+
+        <section class="card wide">
+          <h2>Events</h2>
+          <ul id="eventList"></ul>
+        </section>
+
+        <section class="card wide">
+          <h2>Budget</h2>
+          <div id="budgetSummary"></div>
+          <ul id="budgetList"></ul>
+        </section>
+
+        <section class="card">
+          <h2>Pantry</h2>
+          <form id="pantryForm" class="quick-add">
+            <input id="pantryName" type="text" placeholder="Item name" />
+            <input id="pantryQty" type="text" placeholder="Quantity" />
+            <button type="submit">Add</button>
+          </form>
+          <ul id="pantryList"></ul>
+        </section>
+      </div>
+
+    </div>
+
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
