@@ -12,6 +12,7 @@ from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 
 import ai_agent
+import voice
 from db import (init_db, get_db, utcnow, Household, User, ShoppingItem, Task, Reminder,
                 Event, PantryItem, Budget, ChatMessage)
 from auth import (hash_password, verify_password, DUMMY_HASH, start_session, end_session,
@@ -400,6 +401,7 @@ def clear_history(user: User = Depends(current_user), db: Session = Depends(get_
 
 
 app.include_router(router)
+app.include_router(voice.router)
 
 # Must be LAST: serves frontend/index.html, style.css, app.js as the website itself.
 app.mount("/", StaticFiles(directory="frontend", html=True), name="frontend")
