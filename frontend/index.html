@@ -7,6 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@500;600&family=Public+Sans:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="voice.css" />
 </head>
 <body>
 
@@ -21,7 +22,7 @@
 
   <main class="layout">
 
-        <section id="authView" class="card auth-card" hidden>
+    <section id="authView" class="card auth-card" hidden>
       <h2>Welcome</h2>
       <div class="auth-tabs">
         <button type="button" id="tabLogin" class="tab active">Sign in</button>
@@ -69,6 +70,7 @@
         <div id="chatMessages"></div>
         <form id="chatForm">
           <input id="chatInput" type="text" placeholder="Tell me what's going on..." maxlength="1000" />
+          <button type="button" id="micBtn" class="mic" aria-label="Speak your message" title="Speak your message"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></button>
           <button type="submit">Send</button>
         </form>
       </section>
@@ -121,5 +123,6 @@
   </main>
 
   <script src="app.js"></script>
+  <script src="voice.js"></script>
 </body>
 </html>
