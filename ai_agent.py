@@ -1,6 +1,7 @@
 from dotenv import load_dotenv
 from groq import Groq
 import os
+import re
 import json
 import datetime
 from zoneinfo import ZoneInfo
@@ -11,6 +12,7 @@ from db import (Household, ShoppingItem, Task, Reminder, Event, Budget,
 load_dotenv()
 client = Groq(api_key=os.environ.get("GROQ_API_KEY"), timeout=30.0)
 MODEL = "openai/gpt-oss-20b"
+MAX_ROUNDS = 8
 
 
 # ---------- Tool definitions ----------
@@ -33,11 +35,19 @@ def b(desc):
     return {"type": "boolean", "description": desc}
 
 
+def names_list(desc):
+    return {"type": "array", "items": {"type": "string"}, "description": desc}
+
+
 TOOLS = [
-    tool("add_shopping_item", "Add an item to the household shopping list",
-         {"name": s("Name of the item, e.g. 'milk'")}, ["name"]),
-    tool("remove_shopping_item", "Remove an item from the shopping list",
-         {"name": s("Name of the item to remove")}, ["name"]),
+    tool("add_shopping_items",
+         "Add one or more items to the household shopping list. When the person mentions several "
+         "items, pass ALL of them in this one call, one entry per item. Never join several items "
+         "into one entry.",
+         {"names": names_list("Each item as its own entry, e.g. ['milk', 'eggs', 'bread']")}, ["names"]),
+    tool("remove_shopping_items",
+         "Remove one or more items from the shopping list. Pass all of them in one call.",
+         {"names": names_list("Each item to remove as its own entry")}, ["names"]),
     tool("edit_shopping_item", "Rename an item already on the shopping list",
          {"old_name": s("Current item name"), "new_name": s("New item name")},
          ["old_name", "new_name"]),
@@ -128,11 +138,20 @@ TOOLS = [
     tool("remove_budget_category", "Remove a spending category from the budget",
          {"category": s("Category name to remove")}, ["category"]),
 
-    tool("add_pantry_item", "Add or update an item in the pantry/food inventory",
-         {"name": s("Item name, e.g. 'rice'"), "quantity": s("Quantity as text, e.g. '5kg' or '12'")},
-         ["name"]),
-    tool("remove_pantry_item", "Remove an item from the pantry, e.g. when it's used up",
-         {"name": s("Item name to remove")}, ["name"]),
+    tool("add_pantry_items",
+         "Add or update one or more items in the pantry/food inventory. When the person mentions "
+         "several items, pass ALL of them in this one call, one entry per item.",
+         {"items": {
+             "type": "array",
+             "description": "Each pantry item with an optional quantity, e.g. [{'name': 'rice', 'quantity': '5kg'}]",
+             "items": {"type": "object",
+                       "properties": {"name": s("Item name, e.g. 'rice'"),
+                                      "quantity": s("Quantity as text, e.g. '5kg' or '12'")},
+                       "required": ["name"]}}},
+         ["items"]),
+    tool("remove_pantry_items",
+         "Remove one or more items from the pantry, e.g. when they are used up. Pass all of them in one call.",
+         {"names": names_list("Each item to remove as its own entry")}, ["names"]),
 ]
 
 
@@ -175,6 +194,23 @@ def need(args, key):
     return value
 
 
+def as_list(value):
+    """Turn a list (or a single comma-separated string) into clean, unique entries.
+    Protects against the model joining several items into one entry."""
+    if value is None:
+        return []
+    if isinstance(value, str):
+        value = [value]
+    out, seen = [], set()
+    for entry in value:
+        for part in re.split(r"[,;\n]+", str(entry)):
+            part = part.strip()
+            if part and part.lower() not in seen:
+                seen.add(part.lower())
+                out.append(part)
+    return out
+
+
 def bad_datetime(value):
     try:
         datetime.datetime.strptime(value, "%Y-%m-%d %H:%M")
@@ -189,29 +225,51 @@ def reset_flags(obj):
         obj.hour_before_announced = False
 
 
-def budget_numbers(b):
-    allocated = sum((b.categories or {}).values())
-    return {"allocated_total": allocated, "unallocated_amount": b.total - allocated}
+def budget_numbers(b_row):
+    allocated = sum((b_row.categories or {}).values())
+    return {"allocated_total": allocated, "unallocated_amount": b_row.total - allocated}
+
+
+def remove_many(db, Model, hid, names, key):
+    """Remove several rows by name; report what was removed and what could not be matched."""
+    items = rows(db, Model, hid)
+    removed, problems = [], []
+    for n in names:
+        obj, err = find_match(items, key, n)
+        if err:
+            problems.append(err)
+            continue
+        removed.append(key(obj))
+        items.remove(obj)
+        db.delete(obj)
+    db.commit()
+    return {"status": "removed" if removed else "nothing_removed", "removed": removed, "problems": problems}
 
 
 # ---------- Tool execution (everything is scoped to one household) ----------
 def run_tool(db, hid, name, args):
     # Shopping
-    if name == "add_shopping_item":
-        item = need(args, "name")
-        if not any(r.name.lower() == item.lower() for r in rows(db, ShoppingItem, hid)):
-            db.add(ShoppingItem(household_id=hid, name=item))
-            db.commit()
-        return {"status": "added", "item": item}
-
-    if name == "remove_shopping_item":
-        obj, err = find_match(rows(db, ShoppingItem, hid), lambda r: r.name, args["name"])
-        if err:
-            return err
-        removed = obj.name
-        db.delete(obj)
+    if name in ("add_shopping_items", "add_shopping_item"):
+        names = as_list(args.get("names", args.get("name")))
+        if not names:
+            raise ValueError("'names' can't be empty")
+        existing = {r.name.lower() for r in rows(db, ShoppingItem, hid)}
+        added, already = [], []
+        for n in names:
+            if n.lower() in existing:
+                already.append(n)
+            else:
+                db.add(ShoppingItem(household_id=hid, name=n))
+                existing.add(n.lower())
+                added.append(n)
         db.commit()
-        return {"status": "removed", "item": removed}
+        return {"status": "added", "added": added, "already_on_list": already}
+
+    if name in ("remove_shopping_items", "remove_shopping_item"):
+        names = as_list(args.get("names", args.get("name")))
+        if not names:
+            raise ValueError("'names' can't be empty")
+        return remove_many(db, ShoppingItem, hid, names, lambda r: r.name)
 
     if name == "edit_shopping_item":
         obj, err = find_match(rows(db, ShoppingItem, hid), lambda r: r.name, args["old_name"])
@@ -362,26 +420,40 @@ def run_tool(db, hid, name, args):
                                              "categories": cats}, **budget_numbers(b_row)}
 
     # Pantry
-    if name == "add_pantry_item":
-        item = need(args, "name")
-        quantity = str(args.get("quantity", "") or "").strip()
-        for existing in rows(db, PantryItem, hid):
-            if existing.name.lower() == item.lower():
-                existing.quantity = quantity
-                db.commit()
-                return {"status": "updated", "item": existing.name, "quantity": quantity}
-        db.add(PantryItem(household_id=hid, name=item, quantity=quantity))
+    if name in ("add_pantry_items", "add_pantry_item"):
+        entries = args.get("items")
+        if entries is None:  # single-item shape
+            entries = [{"name": args.get("name", ""), "quantity": args.get("quantity", "")}]
+        wanted = []
+        for e in entries:
+            if isinstance(e, str):
+                wanted += [{"name": n, "quantity": ""} for n in as_list(e)]
+            elif isinstance(e, dict):
+                wanted.append({"name": str(e.get("name", "")).strip(),
+                               "quantity": str(e.get("quantity", "") or "").strip()})
+        wanted = [w for w in wanted if w["name"]]
+        if not wanted:
+            raise ValueError("no pantry items were given")
+        existing = {r.name.lower(): r for r in rows(db, PantryItem, hid)}
+        done = []
+        for w in wanted:
+            row = existing.get(w["name"].lower())
+            if row:
+                row.quantity = w["quantity"]
+                done.append({"item": row.name, "quantity": w["quantity"], "status": "updated"})
+            else:
+                row = PantryItem(household_id=hid, name=w["name"], quantity=w["quantity"])
+                db.add(row)
+                existing[w["name"].lower()] = row
+                done.append({"item": w["name"], "quantity": w["quantity"], "status": "added"})
         db.commit()
-        return {"status": "added", "item": item, "quantity": quantity}
+        return {"status": "done", "items": done}
 
-    if name == "remove_pantry_item":
-        obj, err = find_match(rows(db, PantryItem, hid), lambda r: r.name, args["name"])
-        if err:
-            return err
-        removed = obj.name
-        db.delete(obj)
-        db.commit()
-        return {"status": "removed", "item": removed}
+    if name in ("remove_pantry_items", "remove_pantry_item"):
+        names = as_list(args.get("names", args.get("name")))
+        if not names:
+            raise ValueError("'names' can't be empty")
+        return remove_many(db, PantryItem, hid, names, lambda r: r.name)
 
     return {"error": f"unknown tool: {name}"}
 
@@ -430,6 +502,9 @@ def build_system_message(db, household, user):
             f"for tasks, reminders and events must be in the format 'YYYY-MM-DD HH:MM'. When a "
             f"reminder, event or task deadline doesn't include a specific time, assume a "
             f"reasonable one (like 9:00 AM) and mention that assumption in your reply.\n\n"
+            f"When someone lists several shopping or pantry items (for example 'add milk, eggs and "
+            f"bread'), add ALL of them in a single tool call with one entry per item. Never join "
+            f"several items into one entry, and never stop after the first item.\n\n"
             f"Tasks may have an optional due date/time (due_at); a task with a due date gets "
             f"alarms just like a reminder. When someone mentions a task with a deadline "
             f"(e.g. 'I need to pay the bill by Friday 5pm'), create the task with due_at set. "
@@ -470,7 +545,7 @@ def chat(db, user, user_message):
                 + [{"role": "user", "content": user_message}])
 
     reply = None
-    for _ in range(4):  # allows chained actions, e.g. remove then add
+    for _ in range(MAX_ROUNDS):  # allows many chained actions
         response = client.chat.completions.create(model=MODEL, messages=messages, tools=TOOLS)
         msg = response.choices[0].message
 
@@ -492,7 +567,17 @@ def chat(db, user, user_message):
                 "content": json.dumps(result, ensure_ascii=False),
             })
 
+    if reply is None:
+        # Ran out of rounds: ask for a short summary, without allowing more actions
+        try:
+            messages.append({"role": "user",
+                             "content": "Please give a short summary of what you just did."})
+            response = client.chat.completions.create(model=MODEL, messages=messages)
+            reply = response.choices[0].message.content
+        except Exception:
+            reply = None
     reply = reply or "Done."
+
     db.add(ChatMessage(user_id=user.id, role="user", content=user_message))
     db.add(ChatMessage(user_id=user.id, role="assistant", content=reply))
     db.commit()
